@@ -102,10 +102,41 @@ with style_placeholder:
 # display cover
 cover_placeholder = st.empty()
 with cover_placeholder:
-    st.markdown(
-        f'<img src="{COVER_IMAGE}" width="100%" style="margin-left: auto; margin-right: auto; display: block;">',
-        unsafe_allow_html=True,
-    )
+    print(f"IDP Page - COVER_IMAGE: {COVER_IMAGE}")
+    if COVER_IMAGE and COVER_IMAGE.startswith('http'):
+        print("IDP Page - Using HTTP URL for cover image")
+        st.markdown(
+            f'<img src="{COVER_IMAGE}" width="100%" style="margin-left: auto; margin-right: auto; display: block;">',
+            unsafe_allow_html=True,
+        )
+    elif COVER_IMAGE and COVER_IMAGE.startswith('src/static/'):
+        print(f"IDP Page - Using local file: {COVER_IMAGE}")
+        # For local files, use st.image with the correct path
+        import os
+        # Get the absolute path from the current working directory
+        file_path = os.path.join(os.getcwd(), COVER_IMAGE)
+        print(f"Looking for file at: {file_path}")
+        if os.path.exists(file_path):
+            st.image(file_path, use_column_width=True)
+        else:
+            print(f"Local file not found: {file_path}")
+            # Try alternative path
+            alt_path = os.path.join(os.path.dirname(__file__), '..', '..', COVER_IMAGE)
+            print(f"Trying alternative path: {alt_path}")
+            if os.path.exists(alt_path):
+                st.image(alt_path, use_column_width=True)
+            else:
+                st.warning("Cover image file not found")
+    elif COVER_IMAGE:
+        print(f"IDP Page - Using fallback for relative path: {COVER_IMAGE}")
+        fallback_url = "https://d1.awsstatic.com/products/bedrock/icon_64_amazonbedrock.302e08f0c3cd2a11d37eb3d77cb894bc5ceff8e4.png"
+        st.markdown(
+            f'<img src="{fallback_url}" width="100%" style="margin-left: auto; margin-right: auto; display: block;">',
+            unsafe_allow_html=True,
+        )
+    else:
+        print("IDP Page - No cover image URL found")
+        st.warning("Cover image not available")
 
 # custom page names in the sidebar
 add_indentation()
@@ -138,7 +169,7 @@ RUN_EXTRACTION = False
 #     SESSION STATE
 #########################
 
-st.session_state.setdefault("authenticated", "False")
+st.session_state.setdefault("authenticated", False)
 st.session_state.setdefault("parsed_response", [])
 st.session_state.setdefault("raw_response", [])
 st.session_state.setdefault("texts", [])
@@ -148,6 +179,9 @@ st.session_state.setdefault("num_few_shots", DEFAULT_FEW_SHOTS)
 st.session_state.setdefault("docs_uploader_key", 0)
 st.session_state.setdefault("attributes_uploader_key", 0)
 st.session_state.setdefault("few_shots_uploader_key", 0)
+st.session_state.setdefault("advanced_mode", False)
+st.session_state.setdefault("table_format", "Wide")
+st.session_state.setdefault("temperature", TEMPERATURE_DEFAULT)
 
 
 #########################
@@ -290,52 +324,85 @@ def run_extraction() -> None:
 # sidebar
 with st.sidebar:
     st.header("Settings")
-    with st.expander("**🧠 Information extraction**", expanded=True):
-        st.selectbox(
-            label="Parsing algorithm:",
-            options=["Bedrock Data Automation", "Amazon Bedrock LLM", "Amazon Textract"],
-            key="parsing_mode",
-            index=1,
-        )
-        st.selectbox(
-            label="Language model:",
-            options=list(MODEL_SPECS.keys())
-            if st.session_state["parsing_mode"] != "Amazon Bedrock LLM"
-            else [m for m in list(MODEL_SPECS.keys()) if "Claude" in m or "Nova" in m or "Pixtral" in m],
-            key="ai_model",
-            disabled=st.session_state["parsing_mode"] == "Bedrock Data Automation",
-        )
+    
+    # Check if running in local mode
+    is_local_mode = os.environ.get("LOCAL_AUTH_FLOW", "false").lower() == "true"
+    
+    if is_local_mode:
+        # Simplified settings for local mode
+        with st.expander("**🧠 Information extraction**", expanded=True):
+            st.selectbox(
+                label="Parsing algorithm:",
+                options=["Amazon Bedrock LLM"],
+                key="parsing_mode",
+                index=0,
+                disabled=True,
+            )
+            # Find Claude 3.7 Sonnet in the model specs
+            claude_models = [m for m in list(MODEL_SPECS.keys()) if "Claude 3.7 Sonnet" in m or "claude-3-7-sonnet" in m.lower()]
+            if claude_models:
+                default_model = claude_models[0]
+            else:
+                # Fallback to first available model
+                default_model = list(MODEL_SPECS.keys())[0] if MODEL_SPECS else "Claude 3.7 Sonnet"
+            
+            st.selectbox(
+                label="Language model:",
+                options=[default_model],
+                key="ai_model",
+                index=0,
+                disabled=True,
+            )
+    else:
+        # Full settings for deployed mode
+        with st.expander("**🧠 Information extraction**", expanded=True):
+            st.selectbox(
+                label="Parsing algorithm:",
+                options=["Bedrock Data Automation", "Amazon Bedrock LLM", "Amazon Textract"],
+                key="parsing_mode",
+                index=1,
+            )
+            st.selectbox(
+                label="Language model:",
+                options=list(MODEL_SPECS.keys())
+                if st.session_state["parsing_mode"] != "Amazon Bedrock LLM"
+                else [m for m in list(MODEL_SPECS.keys()) if "Claude" in m or "Nova" in m or "Pixtral" in m],
+                key="ai_model",
+                disabled=st.session_state["parsing_mode"] == "Bedrock Data Automation",
+            )
 
-    with st.expander("**⚙️ Advanced settings**", expanded=False):
-        st.slider(
-            label="LLM temperature:",
-            value=TEMPERATURE_DEFAULT,
-            min_value=0.0,
-            max_value=1.0,
-            key="temperature",
-            disabled=st.session_state["parsing_mode"] == "Bedrock Data Automation",
-        )
-        st.radio(
-            label="Output format:",
-            options=["Long", "Wide"],
-            key="table_format",
-        )
-        st.checkbox(
-            label="Enable advanced mode",
-            key="advanced_mode",
-            help="Allows adding document-level instructions and few-shot examples to improve accuracy",
-            disabled=st.session_state["parsing_mode"] == "Bedrock Data Automation",
-        )
+        with st.expander("**⚙️ Advanced settings**", expanded=False):
+            st.slider(
+                label="LLM temperature:",
+                value=TEMPERATURE_DEFAULT,
+                min_value=0.0,
+                max_value=1.0,
+                key="temperature",
+                disabled=st.session_state["parsing_mode"] == "Bedrock Data Automation",
+            )
+            st.radio(
+                label="Output format:",
+                options=["Long", "Wide"],
+                key="table_format",
+            )
+            st.checkbox(
+                label="Enable advanced mode",
+                key="advanced_mode",
+                help="Allows adding document-level instructions and few-shot examples to improve accuracy",
+                disabled=st.session_state["parsing_mode"] == "Bedrock Data Automation",
+            )
     st.markdown("")
 
-    st.header("Help")
-    with st.expander(":question: **Read more**"):
-        st.markdown(
-            """- **Language model**: which foundation model is used to analyze the document. Various models may have different accuracy and answer latency.
+    # Only show help section in deployed mode
+    if not is_local_mode:
+        st.header("Help")
+        with st.expander(":question: **Read more**"):
+            st.markdown(
+                """- **Language model**: which foundation model is used to analyze the document. Various models may have different accuracy and answer latency.
 - **Temperature**: temperature controls model creativity. Higher values results in more creative answers, while lower values make them more deterministic.
 - **Advanced mode**: allows providing optional document-level instructions and few-shot examples as inputs.
 - **Table format**: the format of the output table. Long format shows attributes as columns and documents as rows."""  # noqa: E501
-        )
+            )
 
 
 #########################

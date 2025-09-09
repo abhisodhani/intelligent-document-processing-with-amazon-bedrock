@@ -246,7 +246,7 @@ class IDPBedrockStack(Stack):
         if config["frontend"]["deploy_ecs"]:
             self.streamlit_constructs = IDPBedrockECSStack(
                 self,
-                f"{stack_name}-ECS",
+                "IDP-BR-ECS",
                 stack_name=stack_name,
                 s3_data_bucket=self.s3_data_bucket,
                 s3_logs_bucket=s3_logs_bucket.bucket,

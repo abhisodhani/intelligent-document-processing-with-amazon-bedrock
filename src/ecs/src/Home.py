@@ -24,9 +24,11 @@ if "COVER_IMAGE_URL" not in os.environ:
     print("Loading env variables from SSM Parameters")
     path_prefix = f"/{stack_name}/ecs/"
     load_ssm_params(path_prefix)
+    print(f"After SSM: COVER_IMAGE_URL = {os.environ.get('COVER_IMAGE_URL')}")
     # Overwrite env variables with the ones defined in .env file
     print("Loading env variables from .env file")
     load_dotenv(override=True)
+    print(f"After .env: COVER_IMAGE_URL = {os.environ.get('COVER_IMAGE_URL')}")
 
 LOGGER = logging.Logger("ECS", level=logging.DEBUG)
 HANDLER = logging.StreamHandler(sys.stdout)
@@ -39,6 +41,12 @@ LOGGER.addHandler(HANDLER)
 #########################
 
 COVER_IMAGE = os.environ.get("COVER_IMAGE_URL")
+print(f"Raw COVER_IMAGE_URL from env: {COVER_IMAGE}")
+# Fallback to AWS Bedrock icon if cover image is not a full URL
+if COVER_IMAGE and not COVER_IMAGE.startswith('http'):
+    print(f"Cover image is relative path, using fallback")
+    COVER_IMAGE = "https://d1.awsstatic.com/products/bedrock/icon_64_amazonbedrock.302e08f0c3cd2a11d37eb3d77cb894bc5ceff8e4.png"
+print(f"Final COVER_IMAGE value: {COVER_IMAGE}")
 ASSISTANT_AVATAR = os.environ.get("ASSISTANT_AVATAR_URL")
 PAGE_TITLE = "IDP Bedrock"
 PAGE_ICON = ":sparkles:"
@@ -124,11 +132,20 @@ def main():
 
         with st.container():
             if COVER_IMAGE:
-                st.markdown(
-                    f'<img src="{COVER_IMAGE}" width="100%" style="margin-left: auto; margin-right: auto; display: block;">',  # noqa: E501
-                    unsafe_allow_html=True,
-                )
-                LOGGER.debug("Cover image markdown rendered")
+                LOGGER.debug(f"COVER_IMAGE URL: {COVER_IMAGE}")
+                try:
+                    # Use HTML img tag for external URLs
+                    if COVER_IMAGE.startswith('http'):
+                        st.markdown(
+                            f'<img src="{COVER_IMAGE}" width="100%" style="margin-left: auto; margin-right: auto; display: block;">',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.image(COVER_IMAGE, use_column_width=True)
+                    LOGGER.debug("Cover image rendered")
+                except Exception as e:
+                    LOGGER.warning(f"Could not load cover image: {e}")
+                    st.warning("Cover image not available")
             else:
                 LOGGER.warning("COVER_IMAGE_URL environment variable is not set or is empty")
                 st.warning("Cover image not available")

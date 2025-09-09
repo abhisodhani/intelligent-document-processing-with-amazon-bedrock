@@ -1,13 +1,12 @@
 # Copyright © Amazon.com and Affiliates
 
-FROM --platform=linux/amd64 public.ecr.aws/docker/library/python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
 
 RUN apt-get update -y && apt-get install --no-install-recommends -y \
     build-essential \
     curl \
-    software-properties-common \
     git \
     && rm -rf /var/lib/apt/lists/*
 

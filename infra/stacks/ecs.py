@@ -122,8 +122,8 @@ class IDPBedrockECSStack(NestedStack):
         self.docker_asset = self.build_docker_push_ecr()
 
         # Name and value of the custom header to be used for authentication
-        self.custom_header_name = f"{stack_name}-{Aws.ACCOUNT_ID}-cf-header"
-        self.custom_header_value = self.docker_asset.asset_hash
+        self.custom_header_name = f"{stack_name}-cf-header"
+        self.custom_header_value = self.docker_asset.asset_hash[:32]  # Limit to 32 chars
 
         self.vpc = self.create_webapp_vpc(open_to_public_internet=open_to_public_internet)
 
@@ -539,6 +539,10 @@ class IDPBedrockECSStack(NestedStack):
             cpu=self.ecs_cpu,
             execution_role=task_execution_role,
             task_role=task_execution_role,
+            runtime_platform=ecs.RuntimePlatform(
+                operating_system_family=ecs.OperatingSystemFamily.LINUX,
+                cpu_architecture=ecs.CpuArchitecture.ARM64,
+            ),
         )
 
         # Add container with the secrets
